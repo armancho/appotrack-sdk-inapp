@@ -57,12 +57,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <receiver android:name="com.appsflyer.MultipleInstallBroadcastReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="com.android.vending.INSTALL_REFERRER" />
-            </intent-filter>
-        </receiver>
 <!-- end of AT SDK code -->
 ```
 
@@ -83,8 +77,10 @@ buildscript {
 apply plugin: 'com.onesignal.androidsdk.onesignal-gradle-plugin'
 
 repositories {
+    mavenCentral()
     maven { url 'https://maven.google.com' }
     maven { url "https://jitpack.io" }
+    maven {url "http://kochava.bintray.com/maven"}
 }
 // end of AT SDK code
 ```
@@ -122,8 +118,14 @@ android{
 ```groovy
 //AT SDK code
 //DO NOT CHANGE ANYTHING HERE EVEN IF ANDROID STUDIO OFFERS TO
-//appsflyer
-implementation 'com.appsflyer:af-android-sdk:4.+'
+//kochava
+implementation('com.kochava.base:tracker:3.7.1') {
+    transitive = true
+}
+implementation('com.kochava.base:tracker-location:3.7.1') {
+    transitive = true
+}
+implementation 'com.google.android.gms:play-services-ads-identifier:15.0.1'
 implementation 'com.android.installreferrer:installreferrer:1.0'
 //push notifications
 implementation 'com.onesignal:OneSignal:[3.11.2, 3.99.99]'
@@ -140,8 +142,7 @@ implementation 'com.jayway.jsonpath:json-path:2.4.0'
 ```
 # AT SDK code
 -dontwarn com.android.installreferrer
--dontwarn com.appsflyer.**
--keep class com.appsflyer.** { *; }
+-keep class com.kochava.** {*;}
 -keep class com.google.** { *; }
 -keep class * extends android.webkit.WebChromeClient { *; }
 -dontwarn im.delight.android.webview.**
@@ -152,7 +153,7 @@ implementation 'com.jayway.jsonpath:json-path:2.4.0'
 Реклама не будет работать пока вы не настроите приложение. Основные настройки находятся в файле `AppotrackActivity.java` после строчки `/* TODO: SDK configuration */`. Вы можете настроить:
 * `isAtSdkDebugMode` -- установите в `true` чтобы видеть подробный отладочный вывод в Logcat. **Обязательно** установите это значение в `false` прежде чем отправлять приложение в Play Store!
 * `remoteConfigId` -- ключ конфигурации рекламы. Получите его у менеджера.
-* `afDevKey` -- ключ конфигурации аналитической системы AppsFlyer. Получите его у менеджера.
+* `kchAppId` -- идентификатор приложения в аналитической системе Kochava. Получите его у менеджера.
 * `geoipApiKey` и `geoipApiId` -- ключи к GeoIP API. Получите их у менеджера.
 * `sweetieActivityClass` -- класс главного Activity вашего приложения. Установите здесь правильное значение согласно вашего кода.
 * `allowedCountries` -- список географий с которых показ рекламы будет разрешён. Получите его у менеджера.
@@ -161,3 +162,27 @@ implementation 'com.jayway.jsonpath:json-path:2.4.0'
 ### Проверка работы
 Ваш менеджер вручную проверит правильность подключения SDK (без предоставления исходных кодов проекта). Для этого в меню Build &rarr; Generate Signed Build выберите "APK" и соберите APK файл с подписью, такой, какой вы будете отправлять в Play Store для публикации.
 После успешной сборки передайте файл вашему менеджеру для проверки.
+
+### Замечания к выпускам
+#### v19032020
+Выполнен переход с системы аналитики Appsflyer на Kochava. Чтобы обновить своё приложение с предыдущих версий SDK выполните следующие действия:
+*  Замените имеющийся файл `AppotrackActivity.java` на актуальный;
+*  Перенесите настройки SDK из старого файла в новый. Обратите внимание что параметр `afDevKey` был упразднён, и добавлен новый `kchAppId`. Его значение уточняйте у вашего менеджера;
+*  В манифесте вашего приложения (`AndroidManifest.xml`) удалите Receiver `com.appsflyer.MultipleInstallBroadcastReceiver`. Новый Receiver добавлять не нужно, он будет добавлен на этапе сборки автоматически;
+*  В `build.gradle` уровня приложения необходимо добавить два новых репозитория: `mavenCentral()` и `maven {url "http://kochava.bintray.com/maven"}`;
+*  Добавьте ProGuard правило: `-keep class com.kochava.** {*;}`. Удалите правила:
+```
+-dontwarn com.appsflyer.**
+-keep class com.appsflyer.** { *; }
+```
+*  Зависимости `implementation 'com.appsflyer:af-android-sdk:4.+'` и `implementation 'com.android.installreferrer:installreferrer:1.0'` необходимо убрать и добавить: 
+```groovy
+implementation('com.kochava.base:tracker:3.7.1') {
+    transitive = true
+}
+implementation('com.kochava.base:tracker-location:3.7.1') {
+    transitive = true
+}
+implementation 'com.google.android.gms:play-services-ads-identifier:15.0.1'
+implementation 'com.android.installreferrer:installreferrer:1.0'
+```

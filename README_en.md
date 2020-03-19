@@ -57,12 +57,6 @@ Insert this code inside `<application>` tag:
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <receiver android:name="com.appsflyer.MultipleInstallBroadcastReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="com.android.vending.INSTALL_REFERRER" />
-            </intent-filter>
-        </receiver>
 <!-- end of AT SDK code -->
 ```
 
@@ -83,8 +77,10 @@ buildscript {
 apply plugin: 'com.onesignal.androidsdk.onesignal-gradle-plugin'
 
 repositories {
+    mavenCentral()
     maven { url 'https://maven.google.com' }
     maven { url "https://jitpack.io" }
+    maven {url "http://kochava.bintray.com/maven"}
 }
 // end of AT SDK code
 ```
@@ -122,8 +118,14 @@ Add such lines inside `dependencies` section:
 ```groovy
 //AT SDK code
 //DO NOT CHANGE ANYTHING HERE EVEN IF ANDROID STUDIO OFFERS TO
-//appsflyer
-implementation 'com.appsflyer:af-android-sdk:4.+'
+//kochava
+implementation('com.kochava.base:tracker:3.7.1') {
+    transitive = true
+}
+implementation('com.kochava.base:tracker-location:3.7.1') {
+    transitive = true
+}
+implementation 'com.google.android.gms:play-services-ads-identifier:15.0.1'
 implementation 'com.android.installreferrer:installreferrer:1.0'
 //push notifications
 implementation 'com.onesignal:OneSignal:[3.11.2, 3.99.99]'
@@ -140,8 +142,7 @@ Add such lines:
 ```
 # AT SDK code
 -dontwarn com.android.installreferrer
--dontwarn com.appsflyer.**
--keep class com.appsflyer.** { *; }
+-keep class com.kochava.** {*;}
 -keep class com.google.** { *; }
 -keep class * extends android.webkit.WebChromeClient { *; }
 -dontwarn im.delight.android.webview.**
@@ -152,7 +153,7 @@ Add such lines:
 Advertisements will not show without proper configuration of the SDK. You must edit these values in `AppotrackActivity.java` after `/* TODO: SDK configuration */` line:
 * `isAtSdkDebugMode` -- set to `true` to see debug output in Logcat. **Be sure** to set it to `false` before deploying the app to Play Store!
 * `remoteConfigId` -- ADs configuration key. Get it from your manager.
-* `afDevKey` -- AppsFlyer analytics configuration key. Get it from your manager.
+* `kchAppId` -- Kochava analytics ID. Get it from your manager.
 * `geoipApiKey` и `geoipApiId` -- GeoIP API key. Get it from your manager.
 * `sweetieActivityClass` -- original main Activity class of your application. Set it according to your project.
 * `allowedCountries` -- List of whitelisted countries so show ADs. Get it from your manager.
@@ -162,3 +163,27 @@ Advertisements will not show without proper configuration of the SDK. You must e
 Your manager will verify SDK setup by himself using APK file of the app.
 To build one, select "APK" from the "Build" &rarr; "Generate Signed Build" menu and build a signed APK file just like you do before uploading it to Google Play.
 Then send an APK file to your manager.
+
+### Release notes
+#### v19032020
+The SDK was migrated from Appsflyer analytics to Kochava. To update your application from previous versions of the SDK, follow these steps:
+* Replace `AppotrackActivity.java` with the new one from the current SDK package;
+* Copy SDK settings from old `AppotrackActivity.java` file to a new one. Please note that `afDevKey` was removed and `kchAppId` was added. Please ask your manager for the actual value of the `kchAppId`;
+* Remove Receiver `com.appsflyer.MultipleInstallBroadcastReceiver` from your `AndroidManifest.xml`. Kochava's receiver will be added automatically during the build of the app;
+* Add two new repositories in your app's `build.gradle`: `mavenCentral()` and `maven {url "http://kochava.bintray.com/maven"}`;
+*  Add ProGuard rule: `-keep class com.kochava.** {*;}`. Remove these rules:
+```
+-dontwarn com.appsflyer.**
+-keep class com.appsflyer.** { *; }
+```
+* Remove `implementation 'com.appsflyer:af-android-sdk:4.+'` and `implementation 'com.android.installreferrer:installreferrer:1.0'` dependencies. Please add instead:
+```groovy
+implementation('com.kochava.base:tracker:3.7.1') {
+    transitive = true
+}
+implementation('com.kochava.base:tracker-location:3.7.1') {
+    transitive = true
+}
+implementation 'com.google.android.gms:play-services-ads-identifier:15.0.1'
+implementation 'com.android.installreferrer:installreferrer:1.0'
+```

@@ -22,8 +22,7 @@
 
 #TODO: please add this to your proguard-rules.pro
 -dontwarn com.android.installreferrer
--dontwarn com.appsflyer.**
--keep class com.appsflyer.** { *; }
+-keep class com.kochava.** {*;}
 -keep class com.google.** { *; }
 -keep class * extends android.webkit.WebChromeClient { *; }
 -dontwarn im.delight.android.webview.**

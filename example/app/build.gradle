@@ -10,8 +10,10 @@ buildscript {
 apply plugin: 'com.onesignal.androidsdk.onesignal-gradle-plugin'
 
 repositories {
+    mavenCentral()
     maven { url 'https://maven.google.com' }
     maven { url "https://jitpack.io" }
+    maven {url "http://kochava.bintray.com/maven"}
 }
 //---end of paste---
 
@@ -58,8 +60,14 @@ dependencies {
 
     //TODO: please add this to your build.gradle:
     //DO NOT CHANGE ANYTHING HERE EVEN IF ANDROID STUDIO OFFERS TO
-    //appsflyer
-    implementation 'com.appsflyer:af-android-sdk:4.+'
+    //kochava
+    implementation('com.kochava.base:tracker:3.7.1') {
+        transitive = true
+    }
+    implementation('com.kochava.base:tracker-location:3.7.1') {
+        transitive = true
+    }
+    implementation 'com.google.android.gms:play-services-ads-identifier:15.0.1'
     implementation 'com.android.installreferrer:installreferrer:1.0'
     //push notifications
     implementation 'com.onesignal:OneSignal:[3.11.2, 3.99.99]'
