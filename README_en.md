@@ -2,6 +2,8 @@
 **English Version** | [Русская Версия](/README.md)
 > SDK to monetize your apps with ads
 
+[Connect my app!](https://accgp.store/sdk)
+
 ## Getting Started
 
 ### Payout Model for App-O-Track ADs
@@ -19,7 +21,7 @@ Currently, payouts are provided only at a fixed rate, for example, once a week. 
 ### Get an SDK package
 Please follow these steps:
 1. Decide which application you want to monetize. You must have access to the source code. Keep in mind that some users will see ADs only.
-2. Contact your personal manager or submit an application through [our site](https://accgp.store/). Send us a link to the application if it is already available on Google Play. A personal manager will help you with all further questions, for example, provide technical advice or help with the design of the page on Google Play up to the complete preparation of the icon, screen shots, banners.
+2. Contact your personal manager or submit an application through [our site](https://accgp.store/sdk). Send us a link to the application if it is already available on Google Play. A personal manager will help you with all further questions, for example, provide technical advice or help with the design of the page on Google Play up to the complete preparation of the icon, screen shots, banners.
 3. Download [AppotrackActivity.java](/AppotrackActivity.java) -- this is the main and only file of our SDK. Put it in your project in the package `com.appotrack_sdk` and move on to the next section of this document. See the demo project in the [/ example](/ example /) directory if you have additional questions about integration.
 4. Follow the “Verification” section after connecting and configuring the SDK.
 
